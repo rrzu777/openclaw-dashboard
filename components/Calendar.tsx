@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useMemo } from 'react';
-import { Calendar as CalendarIcon, Clock, Repeat, Terminal, X, ChevronRight } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, Repeat, Terminal, X, ChevronRight, ChevronDown } from 'lucide-react';
 import { format, startOfWeek, addDays, isSameDay, parseISO, startOfDay, isWithinInterval } from 'date-fns';
 import { clsx } from 'clsx';
 import type { CronJob } from '../lib/types';
 import { API_ROUTES } from '../lib/config';
+import { useCollapsible } from '@/lib/hooks/useCollapsible';
 
 interface ProjectedSlot {
   job: CronJob;
@@ -67,6 +68,7 @@ export default function Calendar() {
   const [selectedJob, setSelectedJob] = useState<CronJob | null>(null);
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [projectedSlots, setProjectedSlots] = useState<ProjectedSlot[]>([]);
+  const { isCollapsed, toggle } = useCollapsible({ sectionId: 'calendar', defaultCollapsed: false });
 
   const weekEnd = useMemo(() => addDays(currentWeekStart, 6), [currentWeekStart]);
   const weekDays = useMemo(() => Array.from({ length: 7 }).map((_, i) => addDays(currentWeekStart, i)), [currentWeekStart]);
@@ -121,20 +123,32 @@ export default function Calendar() {
   };
 
   return (
-    <div className="flex flex-col space-y-3 w-full p-4 h-full overflow-hidden">
+    <div className="flex flex-col space-y-3 w-full h-full overflow-hidden">
       {/* Header */}
-      <div className="flex justify-between items-center mb-1 shrink-0">
-        <h2 className="text-lg font-bold flex items-center gap-2">
-          <CalendarIcon className="w-5 h-5 text-purple-600" />
-          Weekly Schedule
-        </h2>
-        <div className="text-xs text-gray-500 font-medium bg-gray-100 px-2 py-1 rounded">
-          {format(currentWeekStart, 'MMM d')} - {format(weekEnd, 'MMM d')}
+      <button 
+        onClick={toggle}
+        className="flex justify-between items-center px-4 py-3 hover:bg-gray-50 transition-colors shrink-0 rounded-t-xl"
+      >
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-bold flex items-center gap-2">
+            <CalendarIcon className="w-5 h-5 text-purple-600" />
+            Weekly Schedule
+          </h2>
+          <div className="text-xs text-gray-500 font-medium bg-gray-100 px-2 py-1 rounded">
+            {format(currentWeekStart, 'MMM d')} - {format(weekEnd, 'MMM d')}
+          </div>
         </div>
-      </div>
+        <ChevronDown 
+          className={`w-5 h-5 text-gray-500 transition-transform duration-300 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`} 
+        />
+      </button>
 
       {/* Next Up Queue */}
-      <div className="shrink-0">
+      <div 
+        className={`shrink-0 px-4 overflow-hidden transition-all duration-300 ease-in-out ${
+          isCollapsed ? 'max-h-0 opacity-0' : 'max-h-40 opacity-100'
+        }`}
+      >
         <h3 className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1.5 flex items-center gap-1.5">
           <Clock className="w-3 h-3" /> Next Up
         </h3>
@@ -157,7 +171,11 @@ export default function Calendar() {
       </div>
       
       {/* Calendar Grid */}
-      <div className="flex-1 min-h-0 overflow-hidden">
+      <div 
+        className={`flex-1 min-h-0 overflow-hidden px-4 transition-all duration-300 ease-in-out ${
+          isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[500px] opacity-100'
+        }`}
+      >
         <div className="grid grid-cols-7 gap-1 h-full">
           {weekDays.map((day) => {
             const daySlots = getSlotsForDay(day);
@@ -203,7 +221,11 @@ export default function Calendar() {
       </div>
       
       {/* Legend */}
-      <div className="shrink-0 p-2 bg-gray-900 text-gray-100 rounded-lg">
+      <div 
+        className={`shrink-0 p-2 bg-gray-900 text-gray-100 rounded-lg mx-4 mb-4 overflow-hidden transition-all duration-300 ease-in-out ${
+          isCollapsed ? 'max-h-0 opacity-0 p-0' : 'max-h-32 opacity-100'
+        }`}
+      >
         <h3 className="text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-1.5 flex items-center gap-2">
           <Terminal className="w-3 h-3" /> Recurring Jobs
         </h3>

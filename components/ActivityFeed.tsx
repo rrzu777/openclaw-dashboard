@@ -5,9 +5,10 @@ import { twMerge } from 'tailwind-merge';
 import { formatDistanceToNow } from 'date-fns';
 import { 
   Terminal, Activity, AlertTriangle, CheckCircle, Clock, 
-  AlertCircle, Cpu, Hammer, Search
+  AlertCircle, Cpu, Hammer, Search, ChevronDown
 } from 'lucide-react';
 import { useEvents } from '@/contexts/EventsContext';
+import { useCollapsible } from '@/lib/hooks/useCollapsible';
 
 type EventLevel = 'info' | 'warn' | 'error';
 type EventType =
@@ -53,6 +54,7 @@ export default function ActivityFeed() {
   const events = rawEvents as unknown as MCEvent[];
   const [filter, setFilter] = useState<'all' | 'errors' | 'tasks'>('all');
   const [mode, setMode] = useState<'verbose' | 'compact'>('compact');
+  const { isCollapsed, toggle } = useCollapsible({ sectionId: 'activityFeed', defaultCollapsed: false });
 
   // Filter events
   const filteredRaw = events.filter(e => {
@@ -84,32 +86,44 @@ export default function ActivityFeed() {
   const stalledCount = events.filter(e => e.type === 'watchdog.stalled').length;
 
   return (
-    <div className="flex flex-col h-full w-full p-4">
+    <div className="flex flex-col h-full w-full">
       {/* Header with Stats */}
-      <div className="flex justify-between items-center mb-4 shrink-0">
-        <h2 className="text-xl font-bold flex items-center gap-2">
-          <Terminal className="w-5 h-5 text-purple-500" />
-          Activity Feed
-        </h2>
-        <div className="flex gap-2 text-xs">
-          <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-100 font-medium">
-            {taskCount} Tasks
-          </span>
-          {errorCount > 0 && (
-            <span className="bg-red-50 text-red-700 px-2 py-1 rounded border border-red-100 font-medium">
-              {errorCount} Errors
+      <button 
+        onClick={toggle}
+        className="flex justify-between items-center px-4 py-3 border-b hover:bg-gray-50 transition-colors shrink-0"
+      >
+        <div className="flex items-center gap-2">
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <Terminal className="w-5 h-5 text-purple-500" />
+            Activity Feed
+          </h2>
+          <div className="flex gap-2 text-xs">
+            <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-100 font-medium">
+              {taskCount} Tasks
             </span>
-          )}
-          {stalledCount > 0 && (
-            <span className="bg-orange-50 text-orange-700 px-2 py-1 rounded border border-orange-100 font-medium">
-              {stalledCount} Stalled
-            </span>
-          )}
+            {errorCount > 0 && (
+              <span className="bg-red-50 text-red-700 px-2 py-1 rounded border border-red-100 font-medium">
+                {errorCount} Errors
+              </span>
+            )}
+            {stalledCount > 0 && (
+              <span className="bg-orange-50 text-orange-700 px-2 py-1 rounded border border-orange-100 font-medium">
+                {stalledCount} Stalled
+              </span>
+            )}
+          </div>
         </div>
-      </div>
+        <ChevronDown 
+          className={`w-5 h-5 text-gray-500 transition-transform duration-300 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`} 
+        />
+      </button>
 
       {/* Filter + Mode */}
-      <div className="flex items-center justify-between gap-2 mb-3 shrink-0">
+      <div 
+        className={`flex items-center justify-between gap-2 px-4 py-3 border-b shrink-0 overflow-hidden transition-all duration-300 ease-in-out ${
+          isCollapsed ? 'max-h-0 opacity-0 p-0 border-0' : 'max-h-20 opacity-100'
+        }`}
+      >
         <div className="flex gap-1">
           {(['all', 'tasks', 'errors'] as const).map(f => (
             <button
@@ -147,7 +161,11 @@ export default function ActivityFeed() {
       </div>
       
       {/* Scrollable List */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-2 min-h-0">
+      <div 
+        className={`flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-2 min-h-0 transition-all duration-300 ease-in-out ${
+          isCollapsed ? 'max-h-0 opacity-0 p-0' : 'max-h-[600px] opacity-100 p-4'
+        }`}
+      >
         {loading && events.length === 0 && (
           <div className="flex justify-center items-center h-full text-gray-400 animate-pulse">
             Loading events...

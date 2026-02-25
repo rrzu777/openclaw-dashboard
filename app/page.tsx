@@ -4,6 +4,7 @@ import Search from '@/components/Search';
 import UsageStats from '@/components/UsageStats';
 import SummaryWidget from '@/components/SummaryWidget';
 import GatewayControl from '@/components/GatewayControl';
+import { collapseAllSections, expandAllSections } from '@/lib/hooks/useCollapsible';
 
 export default function Home() {
   return (
@@ -14,9 +15,27 @@ export default function Home() {
           <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center text-white font-bold shadow-lg">OC</div>
           <h1 className="text-xl font-bold tracking-tight text-gray-800">Mission Control v1.4</h1>
         </div>
-        <div className="flex gap-2 text-sm text-gray-500 items-center bg-white border px-3 py-1.5 rounded-full shadow-sm">
-          <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
-          <span className="font-medium">System Online</span>
+        <div className="flex items-center gap-3">
+          <div className="flex gap-2 text-sm text-gray-500 items-center bg-white border px-3 py-1.5 rounded-full shadow-sm">
+            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+            <span className="font-medium">System Online</span>
+          </div>
+          <div className="flex gap-1">
+            <button 
+              onClick={collapseAllSections}
+              className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded border border-gray-200 transition-colors"
+              title="Colapsar todas las secciones"
+            >
+              − All
+            </button>
+            <button 
+              onClick={expandAllSections}
+              className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded border border-gray-200 transition-colors"
+              title="Expandir todas las secciones"
+            >
+              + All
+            </button>
+          </div>
         </div>
       </header>
 

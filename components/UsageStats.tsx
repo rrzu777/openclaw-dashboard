@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { Activity, Zap, ShieldAlert, Skull, RefreshCw, DollarSign } from 'lucide-react';
+import { Activity, Zap, ShieldAlert, Skull, RefreshCw, DollarSign, ChevronDown } from 'lucide-react';
 import { API_ROUTES } from '../lib/config';
+import { useCollapsible } from '@/lib/hooks/useCollapsible';
 
 interface UsageStatsData {
   opencode?: { cost: number };
@@ -20,6 +21,7 @@ export default function UsageStats() {
   const [processes, setProcesses] = useState<ProcessInfo[]>([]);
   const [selectedPids, setSelectedPids] = useState<string[]>([]);
   const [killing, setKilling] = useState(false);
+  const { isCollapsed, toggle } = useCollapsible({ sectionId: 'usageStats', defaultCollapsed: false });
 
   const fetchData = async () => {
     try {
@@ -77,6 +79,25 @@ export default function UsageStats() {
 
   return (
     <div className="flex flex-col gap-4 h-full">
+      {/* Header */}
+      <button 
+        onClick={toggle}
+        className="w-full flex items-center justify-between px-3 py-2 hover:bg-gray-50 transition-colors rounded-t-xl"
+      >
+        <h3 className="text-xs font-bold text-gray-500 flex items-center gap-2">
+          <Activity className="w-3 h-3" /> Usage Stats
+        </h3>
+        <ChevronDown 
+          className={`w-4 h-4 text-gray-500 transition-transform duration-300 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`} 
+        />
+      </button>
+
+      {/* Content */}
+      <div 
+        className={`overflow-hidden transition-all duration-300 ease-in-out ${
+          isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[500px] opacity-100'
+        }`}
+      >
       {/* Metrics Cards */}
       <div className="grid grid-cols-2 gap-2">
         <div className="bg-gradient-to-br from-indigo-50 to-white p-3 rounded-xl border shadow-sm">
@@ -155,6 +176,7 @@ export default function UsageStats() {
             <Skull className="w-3 h-3" /> ALL
           </button>
         </div>
+      </div>
       </div>
     </div>
   );

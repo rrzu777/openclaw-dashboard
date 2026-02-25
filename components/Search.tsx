@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Search as SearchIcon, FileText, Loader2, X } from 'lucide-react';
+import { Search as SearchIcon, FileText, Loader2, X, ChevronDown } from 'lucide-react';
+import { useCollapsible } from '@/lib/hooks/useCollapsible';
 // Manual debounce is easier than installing a package for just one component.
 
 export default function Search() {
@@ -9,6 +10,7 @@ export default function Search() {
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [debouncedQuery, setDebouncedQuery] = useState(query);
+  const { isCollapsed, toggle } = useCollapsible({ sectionId: 'search', defaultCollapsed: false });
 
   // Manual debounce effect
   useEffect(() => {
@@ -43,12 +45,27 @@ export default function Search() {
   }, [debouncedQuery]);
 
   return (
-    <div className="flex flex-col space-y-4 w-full p-4 bg-white rounded-lg shadow-sm border">
-      <h2 className="text-xl font-bold flex items-center gap-2 mb-2">
-        <SearchIcon className="w-5 h-5 text-gray-600" />
-        Global Search
-      </h2>
+    <div className="flex flex-col space-y-4 w-full bg-white rounded-lg shadow-sm border">
+      {/* Header */}
+      <button 
+        onClick={toggle}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors rounded-t-lg"
+      >
+        <h2 className="text-xl font-bold flex items-center gap-2">
+          <SearchIcon className="w-5 h-5 text-gray-600" />
+          Global Search
+        </h2>
+        <ChevronDown 
+          className={`w-5 h-5 text-gray-500 transition-transform duration-300 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`} 
+        />
+      </button>
       
+      {/* Content */}
+      <div 
+        className={`px-4 pb-4 overflow-hidden transition-all duration-300 ease-in-out ${
+          isCollapsed ? 'max-h-0 opacity-0' : 'max-h-96 opacity-100'
+        }`}
+      >
       <div className="relative">
         <input
           type="text"
@@ -99,6 +116,7 @@ export default function Search() {
           No matches found in memory.
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { execFile } from 'child_process';
+import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import { GatewayStatus, GatewayAction } from '@/lib/types';
 
 const execFileAsync = promisify(execFile);
 
 // Allowed commands for security
-const ALLOWED_COMMANDS = ['openclaw', 'systemctl', 'pgrep', 'pkill', 'journalctl'] as const;
+const ALLOWED_COMMANDS = ['openclaw', 'systemctl', 'pgrep', 'pkill', 'journalctl', 'tail'] as const;
 type AllowedCommand = (typeof ALLOWED_COMMANDS)[number];
 
 const GATEWAY_PROCESS = 'openclaw';
@@ -17,10 +17,22 @@ function isAllowedCommand(cmd: string): cmd is AllowedCommand {
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const action = searchParams.get('action');
+
   try {
-    const status = await getGatewayStatus();
-    return NextResponse.json({ status });
+    if (action === 'realtime-logs') {
+      // Return initial logs for polling approach
+      return await getRealtimeLogs();
+    } else if (action === 'status') {
+      return await getSystemctlStatus();
+    } else if (action === 'claude-logs') {
+      return await getClaudeLogs();
+    } else {
+      const status = await getGatewayStatus();
+      return NextResponse.json({ status });
+    }
   } catch (error) {
     console.error('Gateway status error:', error);
     return NextResponse.json(
@@ -33,7 +45,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { action } = body as { action?: GatewayAction };
+    const { action } = body as { action?: GatewayAction | 'restart' };
 
     if (!action || !isValidAction(action)) {
       return NextResponse.json(
@@ -53,7 +65,7 @@ export async function POST(request: Request) {
   }
 }
 
-function isValidAction(action: string): action is GatewayAction {
+function isValidAction(action: string): action is GatewayAction | 'restart' {
   return ['start', 'stop', 'restart', 'logs'].includes(action);
 }
 
@@ -98,7 +110,7 @@ async function getGatewayStatus(): Promise<GatewayStatus> {
   }
 }
 
-async function executeGatewayAction(action: GatewayAction) {
+async function executeGatewayAction(action: GatewayAction | 'restart') {
   switch (action) {
     case 'start':
       return await startGateway();
@@ -145,8 +157,8 @@ async function stopGateway() {
 }
 
 async function restartGateway() {
-  // Restart gateway using openclaw gateway restart
-  const result = await execFileAsync('openclaw', ['gateway', 'restart']);
+  // Restart gateway using systemctl restart openclaw-gateway
+  const result = await execFileAsync('systemctl', ['restart', 'openclaw-gateway']);
   return {
     success: true,
     message: 'Gateway restarted successfully',
@@ -182,5 +194,68 @@ async function getGatewayLogs() {
         logs: 'Unable to retrieve logs. Gateway may not be running as a system service.',
       };
     }
+  }
+}
+
+// New endpoints for Quick Commands section
+
+async function getRealtimeLogs() {
+  try {
+    // Get last 50 lines of openclaw-gateway logs (without -f to avoid blocking)
+    const result = await execFileAsync('journalctl', [
+      '-u',
+      'openclaw-gateway',
+      '-n',
+      '50',
+      '--no-pager',
+    ]);
+    return NextResponse.json({
+      success: true,
+      logs: result.stdout,
+    });
+  } catch (error) {
+    console.error('Realtime logs error:', error);
+    return NextResponse.json(
+      { error: 'Failed to get realtime logs', details: String(error) },
+      { status: 500 }
+    );
+  }
+}
+
+async function getSystemctlStatus() {
+  try {
+    const result = await execFileAsync('systemctl', ['status', 'openclaw-gateway']);
+    return NextResponse.json({
+      success: true,
+      output: result.stdout,
+    });
+  } catch (error: any) {
+    // systemctl status returns non-zero exit code when service is not running
+    // but still provides useful output in stderr
+    return NextResponse.json({
+      success: true,
+      output: error.stderr || String(error),
+    });
+  }
+}
+
+async function getClaudeLogs() {
+  try {
+    // Get last 100 lines from Claude Code logs
+    const result = await execFileAsync('tail', [
+      '-n',
+      '100',
+      '/home/deploy-agent/.claude/logs/*.log',
+    ]);
+    return NextResponse.json({
+      success: true,
+      logs: result.stdout,
+    });
+  } catch (error) {
+    console.error('Claude logs error:', error);
+    return NextResponse.json(
+      { error: 'Failed to get Claude logs', details: String(error) },
+      { status: 500 }
+    );
   }
 }
