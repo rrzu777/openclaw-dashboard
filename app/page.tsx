@@ -3,6 +3,7 @@ import Calendar from '@/components/Calendar';
 import Search from '@/components/Search';
 import UsageStats from '@/components/UsageStats';
 import SummaryWidget from '@/components/SummaryWidget';
+import GatewayControl from '@/components/GatewayControl';
 
 export default function Home() {
   return (
@@ -32,6 +33,9 @@ export default function Home() {
         {/* Right Column: Widgets (Fixed width, Scrollable if needed but better fit) */}
         <div className="w-full xl:w-[480px] space-y-4 shrink-0 flex flex-col h-full overflow-y-auto custom-scrollbar pr-1 pb-2">
           
+          {/* Gateway Control */}
+          <GatewayControl />
+
           {/* Search */}
           <div className="rounded-xl border bg-white shadow-sm overflow-hidden p-1 shrink-0">
             <Search />

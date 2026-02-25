@@ -17,3 +17,13 @@ export interface CronJob {
   status: 'active' | 'disabled' | 'system';
   command?: string;
 }
+
+export interface GatewayStatus {
+  running: boolean;
+  pid?: number;
+  uptime?: string;
+  version?: string;
+  lastChecked: string;
+}
+
+export type GatewayAction = 'start' | 'stop' | 'restart' | 'logs';
