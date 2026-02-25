@@ -241,12 +241,8 @@ async function getSystemctlStatus() {
 
 async function getClaudeLogs() {
   try {
-    // Get last 100 lines from Claude Code logs
-    const result = await execFileAsync('tail', [
-      '-n',
-      '100',
-      '/home/deploy-agent/.claude/logs/*.log',
-    ]);
+    // Get last 100 lines from Claude Code logs (use shell for glob expansion)
+    const result = await execFileAsync('sh', ['-c', 'tail -n 100 /home/deploy-agent/.claude/logs/*.log 2>/dev/null || echo "No Claude logs found"']);
     return NextResponse.json({
       success: true,
       logs: result.stdout,

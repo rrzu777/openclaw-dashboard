@@ -121,33 +121,34 @@ export default function ActivityFeed() {
       {/* Filter + Mode */}
       <div 
         className={`flex items-center justify-between gap-2 px-4 py-3 border-b shrink-0 overflow-hidden transition-all duration-300 ease-in-out ${
-          isCollapsed ? 'max-h-0 opacity-0 p-0 border-0' : 'max-h-20 opacity-100'
+          isCollapsed ? 'max-h-0 opacity-0 p-0 border-0' : 'max-h-24 opacity-100'
         }`}
       >
-        <div className="flex gap-1">
+        <div className="flex gap-1" role="group" aria-label="Filter events">
           {(['all', 'tasks', 'errors'] as const).map(f => (
             <button
               key={f}
-              onClick={() => setFilter(f)}
+              onClick={(e) => { e.stopPropagation(); setFilter(f); }}
               className={twMerge(
-                "px-3 py-1 rounded text-xs font-medium transition-colors",
+                "px-3 py-1 rounded text-xs font-medium transition-colors cursor-pointer",
                 filter === f
                   ? "bg-purple-100 text-purple-700 border border-purple-200"
                   : "bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100"
               )}
+              aria-pressed={filter === f}
             >
               {f.charAt(0).toUpperCase() + f.slice(1)}
             </button>
           ))}
         </div>
 
-        <div className="flex gap-1">
+        <div className="flex gap-1" role="group" aria-label="View mode">
           {(['compact', 'verbose'] as const).map(m => (
             <button
               key={m}
-              onClick={() => setMode(m)}
+              onClick={(e) => { e.stopPropagation(); setMode(m); }}
               className={twMerge(
-                "px-3 py-1 rounded text-xs font-medium transition-colors",
+                "px-3 py-1 rounded text-xs font-medium transition-colors cursor-pointer",
                 mode === m
                   ? "bg-gray-900 text-white border border-gray-900"
                   : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50"

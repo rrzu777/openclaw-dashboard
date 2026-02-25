@@ -173,10 +173,10 @@ export default function Calendar() {
       {/* Calendar Grid */}
       <div 
         className={`flex-1 min-h-0 overflow-hidden px-4 transition-all duration-300 ease-in-out ${
-          isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[500px] opacity-100'
+          isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[600px] opacity-100'
         }`}
       >
-        <div className="grid grid-cols-7 gap-1 h-full">
+        <div className="grid grid-cols-7 gap-1" style={{ height: isCollapsed ? '0' : '100%' }}>
           {weekDays.map((day) => {
             const daySlots = getSlotsForDay(day);
             const isToday = isSameDay(day, new Date());
