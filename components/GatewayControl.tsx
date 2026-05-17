@@ -2,9 +2,16 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { GatewayStatus } from '@/lib/types';
-import { Power, RotateCcw, Play, Square, RefreshCw, FileText, X, Loader2, ChevronDown, Terminal, Activity, Clock, Code } from 'lucide-react';
+import { 
+  Power, RotateCcw, Play, Square, RefreshCw, FileText, X, Loader2, 
+  ChevronDown, Terminal, Activity, Clock, Code, AlertCircle
+} from 'lucide-react';
 import { clsx } from 'clsx';
 import { useCollapsible } from '@/lib/hooks/useCollapsible';
+import { Card, CardContent } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 
 export default function GatewayControl() {
   const [status, setStatus] = useState<GatewayStatus | null>(null);
@@ -24,10 +31,8 @@ export default function GatewayControl() {
   const [claudeLogs, setClaudeLogs] = useState<string>('');
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
 
-  // Auto-scroll ref for realtime logs
   const logsEndRef = useRef<HTMLDivElement>(null);
 
-  // Polling for realtime logs
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (showRealtimeLogs) {
@@ -36,10 +41,7 @@ export default function GatewayControl() {
           const res = await fetch('/api/gateway?action=realtime-logs');
           const data = await res.json();
           if (data.success) {
-            setRealtimeLogs(prev => {
-              const newLogs = data.logs || '';
-              return prev ? prev + '\n' + newLogs : newLogs;
-            });
+            setRealtimeLogs(prev => prev ? prev + '\n' + (data.logs || '') : (data.logs || ''));
           }
         } catch (err) {
           console.error('Failed to fetch realtime logs:', err);
@@ -48,12 +50,9 @@ export default function GatewayControl() {
       fetchRealtimeLogs();
       interval = setInterval(fetchRealtimeLogs, 2000);
     }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
+    return () => { if (interval) clearInterval(interval); };
   }, [showRealtimeLogs]);
 
-  // Auto-scroll to bottom of realtime logs
   useEffect(() => {
     if (showRealtimeLogs && logsEndRef.current) {
       logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -72,13 +71,12 @@ export default function GatewayControl() {
       }
     } catch (err) {
       setError('Failed to fetch gateway status');
-      console.error(err);
     }
   }, []);
 
   useEffect(() => {
     fetchStatus();
-    const interval = setInterval(fetchStatus, 30000); // Poll every 30s
+    const interval = setInterval(fetchStatus, 30000);
     return () => clearInterval(interval);
   }, [fetchStatus]);
 
@@ -99,7 +97,6 @@ export default function GatewayControl() {
       }
     } catch (err) {
       setError('Failed to execute action');
-      console.error(err);
     } finally {
       setActionLoading(null);
     }
@@ -123,13 +120,11 @@ export default function GatewayControl() {
       }
     } catch (err) {
       setError('Failed to fetch logs');
-      console.error(err);
     } finally {
       setActionLoading(null);
     }
   };
 
-  // Quick Commands handlers
   const handleRealtimeLogs = async () => {
     setRealtimeLogs('');
     setShowRealtimeLogs(true);
@@ -141,21 +136,12 @@ export default function GatewayControl() {
     try {
       const res = await fetch('/api/gateway?action=status');
       const data = await res.json();
-      if (data.success) {
-        setSystemStatus(data.output || 'No status available');
-      } else {
-        setSystemStatus(data.error || 'Failed to get status');
-      }
+      setSystemStatus(data.output || 'No status available');
     } catch (err) {
       setSystemStatus('Error fetching status');
-      console.error(err);
     } finally {
       setActionLoading(null);
     }
-  };
-
-  const handleRestartConfirm = () => {
-    setShowRestartConfirm(true);
   };
 
   const handleRestart = async () => {
@@ -171,13 +157,11 @@ export default function GatewayControl() {
       const data = await res.json();
       if (data.success) {
         await fetchStatus();
-        setError(null);
       } else {
         setError(data.error || 'Restart failed');
       }
     } catch (err) {
       setError('Failed to restart gateway');
-      console.error(err);
     } finally {
       setActionLoading(null);
     }
@@ -196,7 +180,6 @@ export default function GatewayControl() {
       }
     } catch (err) {
       setError('Failed to fetch Claude logs');
-      console.error(err);
     } finally {
       setActionLoading(null);
     }
@@ -213,331 +196,245 @@ export default function GatewayControl() {
   };
 
   return (
-    <div className="rounded-xl border bg-white shadow-sm overflow-hidden">
+    <Card padding="none">
       {/* Header */}
-      <button 
-        onClick={toggle}
-        className="w-full border-b px-4 py-3 bg-gray-50 flex items-center justify-between hover:bg-gray-100 transition-colors"
-      >
-        <div className="flex items-center gap-2">
-          <Power className="w-5 h-5 text-gray-600" />
-          <h2 className="font-semibold text-gray-800">OpenClaw Gateway</h2>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 text-sm">
-            <span className={clsx('w-2 h-2 rounded-full animate-pulse', getStatusColor())}></span>
-            <span className="text-gray-600">{getStatusText()}</span>
+      <SectionHeader
+        title="OpenClaw Gateway"
+        description="Service control panel"
+        icon={<Power className="w-5 h-5" />}
+        action={
+          <div className="flex items-center gap-2">
+            <Badge variant={status?.running ? 'success' : 'error'} size="sm" dot>
+              {getStatusText()}
+            </Badge>
+            <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); toggle(); }}>
+              <ChevronDown className={clsx("w-4 h-4 transition-transform", isCollapsed && "-rotate-90")} />
+            </Button>
           </div>
-          <ChevronDown 
-            className={`w-5 h-5 text-gray-500 transition-transform duration-300 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`} 
-          />
-        </div>
-      </button>
-
+        }
+        className="px-4 py-3"
+      />
+      
       {/* Content */}
-      <div 
-        className={`p-4 overflow-hidden transition-all duration-300 ease-in-out ${
-          isCollapsed ? 'max-h-0 opacity-0 p-0' : 'max-h-[800px] opacity-100'
-        }`}
-      >
+      <CardContent className={clsx(
+        "px-4 pb-4 transition-all duration-300",
+        isCollapsed ? "max-h-0 opacity-0 p-0 overflow-hidden" : "max-h-none opacity-100"
+      )}>
         {/* Status Info */}
-        <div className="grid grid-cols-3 gap-3 mb-4 text-sm">
-          <div className="bg-gray-50 rounded-lg p-2 text-center">
-            <div className="text-gray-500 text-xs mb-1">PID</div>
-            <div className="font-mono font-medium text-gray-800">
-              {status?.pid || '—'}
-            </div>
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="bg-gray-50 rounded-lg p-3 text-center border border-gray-200">
+            <p className="text-xs text-gray-500 mb-1">PID</p>
+            <p className="text-lg font-mono font-semibold text-gray-900">{status?.pid || '—'}</p>
           </div>
-          <div className="bg-gray-50 rounded-lg p-2 text-center">
-            <div className="text-gray-500 text-xs mb-1">Uptime</div>
-            <div className="font-mono font-medium text-gray-800">
-              {status?.uptime || '—'}
-            </div>
+          <div className="bg-gray-50 rounded-lg p-3 text-center border border-gray-200">
+            <p className="text-xs text-gray-500 mb-1">Uptime</p>
+            <p className="text-lg font-mono font-semibold text-gray-900">{status?.uptime || '—'}</p>
           </div>
-          <div className="bg-gray-50 rounded-lg p-2 text-center">
-            <div className="text-gray-500 text-xs mb-1">Version</div>
-            <div className="font-mono font-medium text-gray-800 truncate" title={status?.version}>
+          <div className="bg-gray-50 rounded-lg p-3 text-center border border-gray-200">
+            <p className="text-xs text-gray-500 mb-1">Version</p>
+            <p className="text-lg font-mono font-semibold text-gray-900 truncate" title={status?.version}>
               {status?.version?.split(' ')[0] || '—'}
-            </div>
+            </p>
           </div>
         </div>
 
         {/* Error Message */}
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-            {error}
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>{error}</span>
           </div>
         )}
 
         {/* Action Buttons */}
         <div className="flex flex-wrap gap-2 mb-4">
-          <button
+          <Button
+            variant="primary"
+            size="sm"
             onClick={() => handleAction('start')}
             disabled={loading || actionLoading !== null || status?.running}
-            className={clsx(
-              'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-              status?.running
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-green-600 text-white hover:bg-green-700'
-            )}
+            icon={actionLoading === 'start' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
           >
-            {actionLoading === 'start' ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Play className="w-4 h-4" />
-            )}
             Start
-          </button>
+          </Button>
 
-          <button
+          <Button
+            variant="danger"
+            size="sm"
             onClick={() => handleAction('stop')}
             disabled={loading || actionLoading !== null || !status?.running}
-            className={clsx(
-              'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-              !status?.running
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-red-600 text-white hover:bg-red-700'
-            )}
+            icon={actionLoading === 'stop' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Square className="w-4 h-4" />}
           >
-            {actionLoading === 'stop' ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Square className="w-4 h-4" />
-            )}
             Stop
-          </button>
+          </Button>
 
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={handleViewLogs}
             disabled={loading || actionLoading !== null}
-            className={clsx(
-              'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-              actionLoading === 'logs'
-                ? 'bg-gray-100 text-gray-400'
-                : 'bg-blue-600 text-white hover:bg-blue-700'
-            )}
+            icon={actionLoading === 'logs' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
           >
-            {actionLoading === 'logs' ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <FileText className="w-4 h-4" />
-            )}
-            Ver Logs
-          </button>
+            View Logs
+          </Button>
 
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={fetchStatus}
             disabled={loading || actionLoading !== null}
-            className={clsx(
-              'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-              actionLoading
-                ? 'bg-gray-100 text-gray-400'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            )}
+            icon={<RefreshCw className={clsx("w-4 h-4", loading && "animate-spin")} />}
           >
-            <RefreshCw className={clsx('w-4 h-4', loading && 'animate-spin')} />
             Refresh
-          </button>
+          </Button>
         </div>
 
         {/* Quick Commands Section */}
-        <div className="border-t pt-4 mt-4">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-            <Terminal className="w-4 h-4" />
-            Comandos Rápidos
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            <button
+        <div className="border-t border-gray-200 pt-4 mt-4">
+          <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+            <Terminal className="w-4 h-4 text-gray-500" />
+            Quick Commands
+          </h4>
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={handleRealtimeLogs}
               disabled={actionLoading !== null}
-              className={clsx(
-                'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                'bg-purple-600 text-white hover:bg-purple-700'
-              )}
+              icon={<Activity className="w-4 h-4 text-purple-600" />}
             >
-              <Activity className="w-4 h-4" />
-              Logs en Tiempo Real
-            </button>
+              Realtime Logs
+            </Button>
 
-            <button
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={handleSystemStatus}
               disabled={actionLoading !== null}
-              className={clsx(
-                'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                'bg-indigo-600 text-white hover:bg-indigo-700'
-              )}
+              icon={<Clock className="w-4 h-4 text-indigo-600" />}
             >
-              <Clock className="w-4 h-4" />
-              Ver Estado
-            </button>
+              System Status
+            </Button>
 
-            <button
-              onClick={handleRestartConfirm}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowRestartConfirm(true)}
               disabled={actionLoading !== null}
-              className={clsx(
-                'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                'bg-orange-600 text-white hover:bg-orange-700'
-              )}
+              icon={<RotateCcw className="w-4 h-4 text-orange-600" />}
             >
-              <RotateCcw className="w-4 h-4" />
-              Restart Gateway
-            </button>
+              Restart
+            </Button>
 
-            <button
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={handleClaudeLogs}
               disabled={actionLoading !== null}
-              className={clsx(
-                'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                'bg-cyan-600 text-white hover:bg-cyan-700'
-              )}
+              icon={<Code className="w-4 h-4 text-cyan-600" />}
             >
-              <Code className="w-4 h-4" />
-              Logs Claude Code
-            </button>
+              Claude Logs
+            </Button>
           </div>
         </div>
 
         {/* Last Updated */}
-        <div className="mt-4 text-xs text-gray-400 text-center">
-          Last checked: {status?.lastChecked ? new Date(status.lastChecked).toLocaleTimeString() : '—'}
+        <div className="mt-4 pt-3 border-t border-gray-100">
+          <p className="text-xs text-gray-400 text-center">
+            Last checked: {status?.lastChecked ? new Date(status.lastChecked).toLocaleTimeString() : '—'}
+          </p>
         </div>
-      </div>
+      </CardContent>
 
-      {/* Logs Modal */}
+      {/* Modals */}
       {showLogs && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[80vh] flex flex-col">
-            <div className="border-b px-4 py-3 flex items-center justify-between">
-              <h3 className="font-semibold text-gray-800 flex items-center gap-2">
-                <FileText className="w-5 h-5" />
-                Gateway Logs
-              </h3>
-              <button
-                onClick={() => setShowLogs(false)}
-                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5 text-gray-500" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto p-4 bg-gray-900">
-              <pre className="text-green-400 text-xs font-mono whitespace-pre-wrap">
-                {logs}
-              </pre>
-            </div>
-          </div>
-        </div>
+        <Modal title="Gateway Logs" onClose={() => setShowLogs(false)}>
+          <pre className="text-green-400 text-xs font-mono whitespace-pre-wrap bg-gray-900 p-4 rounded-lg max-h-96 overflow-auto">
+            {logs}
+          </pre>
+        </Modal>
       )}
 
-      {/* Realtime Logs Modal */}
       {showRealtimeLogs && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[80vh] flex flex-col">
-            <div className="border-b px-4 py-3 flex items-center justify-between">
-              <h3 className="font-semibold text-gray-800 flex items-center gap-2">
-                <Activity className="w-5 h-5" />
-                Logs en Tiempo Real (openclaw-gateway)
-              </h3>
-              <button
-                onClick={() => setShowRealtimeLogs(false)}
-                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5 text-gray-500" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto p-4 bg-gray-900 font-mono text-xs">
-              <div className="text-green-400 whitespace-pre-wrap">
-                {realtimeLogs || 'Cargando logs...'}
-              </div>
-              <div ref={logsEndRef} />
-            </div>
-            <div className="border-t px-4 py-2 bg-gray-50 text-xs text-gray-500">
-              Actualizando cada 2 segundos • Cierra para detener
-            </div>
+        <Modal 
+          title="Realtime Logs" 
+          onClose={() => setShowRealtimeLogs(false)}
+          footer="Updating every 2 seconds • Close to stop"
+        >
+          <div className="text-green-400 text-xs font-mono whitespace-pre-wrap bg-gray-900 p-4 rounded-lg max-h-96 overflow-auto">
+            {realtimeLogs || 'Loading logs...'}
+            <div ref={logsEndRef} />
           </div>
-        </div>
+        </Modal>
       )}
 
-      {/* System Status Expandible */}
       {showSystemStatus && (
-        <div className="border-t mt-4 pt-4">
-          <button
-            onClick={() => setShowSystemStatus(!showSystemStatus)}
-            className="w-full flex items-center justify-between text-left"
-          >
-            <span className="text-sm font-medium text-gray-700 flex items-center gap-2">
-              <Clock className="w-4 h-4" />
-              Estado del Sistema (systemctl status openclaw-gateway)
-            </span>
-            <ChevronDown 
-              className={`w-5 h-5 text-gray-500 transition-transform ${showSystemStatus ? 'rotate-180' : ''}`} 
-            />
-          </button>
-          {showSystemStatus && (
-            <div className="mt-2 p-3 bg-gray-900 rounded-lg overflow-auto max-h-64">
-              <pre className="text-green-400 text-xs font-mono whitespace-pre-wrap">
-                {actionLoading === 'system-status' ? 'Cargando...' : systemStatus}
-              </pre>
-            </div>
-          )}
-        </div>
+        <Modal title="System Status" onClose={() => setShowSystemStatus(false)}>
+          <pre className="text-green-400 text-xs font-mono whitespace-pre-wrap bg-gray-900 p-4 rounded-lg max-h-96 overflow-auto">
+            {actionLoading === 'system-status' ? 'Loading...' : systemStatus}
+          </pre>
+        </Modal>
       )}
 
-      {/* Restart Confirmation Modal */}
       {showRestartConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-2 flex items-center gap-2">
-              <RotateCcw className="w-5 h-5 text-orange-600" />
-              Confirmar Restart
-            </h3>
-            <p className="text-gray-600 text-sm mb-4">
-              ¿Estás seguro de que quieres reiniciar el gateway? Esto puede causar una interrupción temporal del servicio.
+          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-orange-100 rounded-lg">
+                <RotateCcw className="w-6 h-6 text-orange-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Confirm Restart</h3>
+            </div>
+            <p className="text-gray-600 text-sm mb-6">
+              Are you sure you want to restart the gateway? This may cause a temporary service interruption.
             </p>
             <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setShowRestartConfirm(false)}
-                className="px-4 py-2 rounded-lg text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
+              <Button variant="ghost" size="sm" onClick={() => setShowRestartConfirm(false)}>
+                Cancel
+              </Button>
+              <Button 
+                variant="primary" 
+                size="sm" 
                 onClick={handleRestart}
-                className="px-4 py-2 rounded-lg text-sm font-medium bg-orange-600 text-white hover:bg-orange-700 transition-colors"
+                disabled={actionLoading === 'restart'}
+                icon={actionLoading === 'restart' ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
               >
-                {actionLoading === 'restart' ? (
-                  <Loader2 className="w-4 h-4 animate-spin inline" />
-                ) : null}
-                {' '}Reiniciar
-              </button>
+                Restart
+              </Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Claude Logs Modal */}
       {showClaudeLogs && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[80vh] flex flex-col">
-            <div className="border-b px-4 py-3 flex items-center justify-between">
-              <h3 className="font-semibold text-gray-800 flex items-center gap-2">
-                <Code className="w-5 h-5" />
-                Logs de Claude Code
-              </h3>
-              <button
-                onClick={() => setShowClaudeLogs(false)}
-                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5 text-gray-500" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto p-4 bg-gray-900">
-              <pre className="text-green-400 text-xs font-mono whitespace-pre-wrap">
-                {claudeLogs}
-              </pre>
-            </div>
-          </div>
-        </div>
+        <Modal title="Claude Code Logs" onClose={() => setShowClaudeLogs(false)}>
+          <pre className="text-green-400 text-xs font-mono whitespace-pre-wrap bg-gray-900 p-4 rounded-lg max-h-96 overflow-auto">
+            {claudeLogs}
+          </pre>
+        </Modal>
       )}
+    </Card>
+  );
+}
+
+// Simple Modal component
+function Modal({ title, children, footer, onClose }: { title: string; children: React.ReactNode; footer?: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full flex flex-col max-h-[80vh]">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+          <h3 className="font-semibold text-gray-900">{title}</h3>
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            <X className="w-5 h-5" />
+          </Button>
+        </div>
+        <div className="flex-1 overflow-auto p-4">{children}</div>
+        {footer && (
+          <div className="border-t border-gray-200 px-4 py-2 bg-gray-50 text-xs text-gray-500 text-center">
+            {footer}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

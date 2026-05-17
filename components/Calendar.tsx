@@ -1,12 +1,17 @@
 "use client";
 
 import { useState, useEffect, useMemo } from 'react';
-import { Calendar as CalendarIcon, Clock, Repeat, Terminal, X, ChevronRight, ChevronDown } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, Repeat, ChevronRight, ChevronDown, ChevronLeft } from 'lucide-react';
 import { format, startOfWeek, addDays, isSameDay, parseISO, startOfDay, isWithinInterval } from 'date-fns';
 import { clsx } from 'clsx';
+import { CronExpressionParser } from 'cron-parser';
 import type { CronJob } from '../lib/types';
 import { API_ROUTES } from '../lib/config';
 import { useCollapsible } from '@/lib/hooks/useCollapsible';
+import { Card, CardContent } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 
 interface ProjectedSlot {
   job: CronJob;
@@ -14,7 +19,6 @@ interface ProjectedSlot {
   time: string;
 }
 
-// Parse schedule to get interval in hours (for "Every X min/h" formats)
 function getScheduleIntervalHours(schedule: string): number | null {
   const everyMatch = schedule.match(/Every\s+(\d+)\s*(min|h|hour|hours)/i);
   if (!everyMatch) return null;
@@ -25,38 +29,52 @@ function getScheduleIntervalHours(schedule: string): number | null {
   return null;
 }
 
-// Project recurring jobs across the week
 function projectRecurringJobs(jobs: CronJob[], weekStart: Date, weekEnd: Date): ProjectedSlot[] {
   const slots: ProjectedSlot[] = [];
   const now = new Date();
 
   jobs.forEach(job => {
-    if (!job.schedule.toLowerCase().includes('every')) return;
-    
-    const intervalHours = getScheduleIntervalHours(job.schedule);
-    if (!intervalHours || intervalHours <= 0) return;
+    if (job.status === 'disabled') return;
+    // Skip every-minute jobs (noise in calendar view)
+    if (job.schedule === '* * * * *') return;
 
-    const intervalMs = intervalHours * 60 * 60 * 1000;
-    
-    // Find first occurrence in the week
-    let cursor = new Date(job.nextRun || now);
-    if (cursor < weekStart) {
-      // Advance cursor to be within the week
-      const diffMs = weekStart.getTime() - cursor.getTime();
-      const steps = Math.ceil(diffMs / intervalMs);
-      cursor = new Date(cursor.getTime() + steps * intervalMs);
+    // Try "Every X min/h" format first
+    const intervalHours = getScheduleIntervalHours(job.schedule);
+    if (intervalHours && intervalHours > 0) {
+      const intervalMs = intervalHours * 60 * 60 * 1000;
+      let cursor = new Date(job.nextRun || now);
+      if (cursor < weekStart) {
+        const steps = Math.ceil((weekStart.getTime() - cursor.getTime()) / intervalMs);
+        cursor = new Date(cursor.getTime() + steps * intervalMs);
+      }
+      while (cursor <= weekEnd) {
+        if (cursor >= now) {
+          slots.push({ job, date: new Date(cursor), time: format(cursor, 'HH:mm') });
+        }
+        cursor = new Date(cursor.getTime() + intervalMs);
+      }
+      return;
     }
 
-    // Generate slots for the entire week
-    while (cursor <= weekEnd) {
-      if (cursor >= now) {
-        slots.push({
-          job,
-          date: cursor,
-          time: format(cursor, 'HH:mm'),
+    // Try cron expression (5-part POSIX cron like "0 */2 * * *")
+    // Only works if schedule looks like a cron expression (has spaces and numbers/stars)
+    if (/^[\d*\/,\-\s]+$/.test(job.schedule) && job.schedule.trim().split(/\s+/).length >= 5) {
+      try {
+        const interval = CronExpressionParser.parse(job.schedule, {
+          currentDate: weekStart,
+          endDate: weekEnd,
         });
+        while (true) {
+          let d: Date;
+          try { d = interval.next().toDate(); } catch { break; }
+          if (d > weekEnd) break;
+          if (d >= now) {
+            slots.push({ job, date: d, time: format(d, 'HH:mm') });
+          }
+        }
+      } catch {
+        // Not a valid cron expression, skip
       }
-      cursor = new Date(cursor.getTime() + intervalMs);
     }
   });
 
@@ -79,7 +97,7 @@ export default function Calendar() {
         const res = await fetch(API_ROUTES.cron);
         if (res.ok) {
           const data = await res.json();
-          setJobs(data.jobs);
+          setJobs(data.jobs || []);
         }
       } catch (err) {
         console.error('Failed to fetch cron:', err);
@@ -93,214 +111,218 @@ export default function Calendar() {
     setProjectedSlots(slots);
   }, [jobs, currentWeekStart, weekEnd]);
 
-  // Next up: upcoming 5 events (mix of nextRun and projected)
-  const nextUp = (() => {
+  const nextUp = useMemo(() => {
     const all: { job: CronJob; date: Date; time: string }[] = [];
     const now = new Date();
 
-    // Add single-run jobs (nextRun only)
     jobs.forEach(job => {
       if (job.nextRun && !job.schedule.toLowerCase().includes('every')) {
         all.push({ job, date: parseISO(job.nextRun), time: format(parseISO(job.nextRun), 'HH:mm') });
       }
     });
 
-    // Add projected recurring jobs
     all.push(...projectedSlots);
 
-    // Filter future, sort, take 5
     return all
       .filter(s => s.date >= now)
       .sort((a, b) => a.date.getTime() - b.date.getTime())
       .slice(0, 5);
-  })();
+  }, [jobs, projectedSlots]);
 
-  // Get slots for a specific day
   const getSlotsForDay = (day: Date) => {
     const dayStart = startOfDay(day);
     const dayEnd = addDays(dayStart, 1);
     return projectedSlots.filter(s => isWithinInterval(s.date, { start: dayStart, end: dayEnd }));
   };
 
+  const navigateWeek = (direction: 'prev' | 'next') => {
+    setCurrentWeekStart(prev => addDays(prev, direction === 'prev' ? -7 : 7));
+  };
+
+  const isToday = (date: Date) => isSameDay(date, new Date());
+
+  const getJobDisplayName = (job: CronJob) => {
+    if (job.name !== 'System Task') return job.name;
+    // Extract script name from command
+    if (job.command) {
+      const parts = job.command.split('/');
+      const script = parts[parts.length - 1]?.split(' ')[0];
+      if (script) return script.replace(/\.(sh|py|js)$/, '');
+    }
+    return job.name;
+  };
+
   return (
-    <div className="flex flex-col space-y-3 w-full h-full overflow-hidden">
+    <Card padding="none" className="h-full flex flex-col">
       {/* Header */}
-      <button 
-        onClick={toggle}
-        className="flex justify-between items-center px-4 py-3 hover:bg-gray-50 transition-colors shrink-0 rounded-t-xl"
-      >
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-bold flex items-center gap-2">
-            <CalendarIcon className="w-5 h-5 text-purple-600" />
-            Weekly Schedule
-          </h2>
-          <div className="text-xs text-gray-500 font-medium bg-gray-100 px-2 py-1 rounded">
-            {format(currentWeekStart, 'MMM d')} - {format(weekEnd, 'MMM d')}
+      <SectionHeader
+        title="Weekly Schedule"
+        description="Upcoming cron jobs"
+        icon={<CalendarIcon className="w-5 h-5" />}
+        action={
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); navigateWeek('prev'); }}>
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); navigateWeek('next'); }}>
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); toggle(); }}>
+              <ChevronDown className={clsx("w-4 h-4 transition-transform", isCollapsed && "-rotate-90")} />
+            </Button>
+          </div>
+        }
+        className="px-4 py-3"
+      />
+      
+      {/* Content */}
+      <CardContent className={clsx(
+        "transition-all duration-300",
+        isCollapsed ? "max-h-0 opacity-0 p-0 overflow-hidden" : "max-h-none opacity-100"
+      )}>
+        {/* Next Up Section */}
+        <div className="mb-4 pb-3 border-b border-gray-200">
+          <h4 className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5" />
+            Next Up
+          </h4>
+          <div className="space-y-1.5">
+            {nextUp.length > 0 ? (
+              nextUp.map((item, idx) => (
+                <div
+                  key={`${item.job.id}-${idx}`}
+                  className="flex items-center gap-2 text-xs p-2 bg-gray-50 border border-gray-200 rounded-md hover:bg-gray-100 cursor-pointer transition-colors"
+                  onClick={() => setSelectedJob(item.job)}
+                >
+                  <span className="font-mono text-gray-600 w-11 shrink-0">{item.time}</span>
+                  <span className="font-medium text-gray-900 truncate flex-1">{getJobDisplayName(item.job)}</span>
+                  <ChevronRight className="w-3 h-3 text-gray-400 shrink-0" />
+                </div>
+              ))
+            ) : (
+              <p className="text-xs text-gray-400 italic">No upcoming jobs</p>
+            )}
           </div>
         </div>
-        <ChevronDown 
-          className={`w-5 h-5 text-gray-500 transition-transform duration-300 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`} 
-        />
-      </button>
 
-      {/* Next Up Queue */}
-      <div 
-        className={`shrink-0 px-4 overflow-hidden transition-all duration-300 ease-in-out ${
-          isCollapsed ? 'max-h-0 opacity-0' : 'max-h-40 opacity-100'
-        }`}
-      >
-        <h3 className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1.5 flex items-center gap-1.5">
-          <Clock className="w-3 h-3" /> Next Up
-        </h3>
-        <div className="space-y-1">
-          {nextUp.map((item, idx) => (
-            <div
-              key={`${item.job.id}-${idx}`}
-              className="flex items-center gap-2 text-xs p-1.5 bg-gray-50 border border-gray-200 rounded hover:bg-gray-100 cursor-pointer"
-              onClick={() => setSelectedJob(item.job)}
-            >
-              <span className="font-mono text-gray-500 w-10 shrink-0">{item.time}</span>
-              <span className="font-medium truncate flex-1">{item.job.name}</span>
-              <ChevronRight className="w-3 h-3 text-gray-400" />
-            </div>
-          ))}
-          {nextUp.length === 0 && (
-            <div className="text-xs text-gray-400 italic p-1.5">No upcoming jobs</div>
-          )}
-        </div>
-      </div>
-      
-      {/* Calendar Grid */}
-      <div 
-        className={`flex-1 min-h-0 overflow-hidden px-4 transition-all duration-300 ease-in-out ${
-          isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[600px] opacity-100'
-        }`}
-      >
-        <div className="grid grid-cols-7 gap-1" style={{ height: isCollapsed ? '0' : '100%' }}>
-          {weekDays.map((day) => {
-            const daySlots = getSlotsForDay(day);
-            const isToday = isSameDay(day, new Date());
-            
-            return (
-              <div
-                key={day.toString()}
-                className={clsx(
-                  "flex flex-col gap-1 rounded p-1 border min-h-0 overflow-hidden",
-                  isToday ? "bg-blue-50/50 border-blue-200" : "bg-gray-50/50 border-gray-100"
-                )}
-              >
-                <div className="text-center pb-1 shrink-0">
-                  <div className="text-[9px] font-bold text-gray-400 uppercase">{format(day, 'EEE')}</div>
-                  <div className={clsx("text-xs font-bold", isToday ? "text-blue-600" : "text-gray-600")}>
-                    {format(day, 'd')}
-                  </div>
+        {/* Weekly Grid */}
+        <div className="mb-4">
+          <div className="grid grid-cols-7 gap-1 mb-2">
+            {weekDays.map((day) => (
+              <div key={day.toString()} className="text-center">
+                <div className="text-[10px] font-medium text-gray-500 uppercase mb-1">
+                  {format(day, 'EEE')}
                 </div>
-                
-                <div className="flex flex-col gap-1 overflow-y-auto custom-scrollbar min-h-0 flex-1">
-                  {daySlots.map((slot, idx) => (
-                    <div
-                      key={`${slot.job.id}-${idx}`}
-                      onClick={() => setSelectedJob(slot.job)}
-                      className={clsx(
-                        "p-1.5 rounded text-[9px] border shadow-sm flex flex-col gap-0.5 cursor-pointer transition-all hover:scale-105 hover:z-10",
-                        "bg-purple-100 border-purple-200 text-purple-900"
-                      )}
-                    >
-                      <span className="font-semibold truncate leading-tight">{slot.job.name}</span>
-                      <span className="flex items-center gap-0.5 opacity-75 text-[8px]">
-                        <Clock className="w-2 h-2" />
-                        {slot.time}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      
-      {/* Legend */}
-      <div 
-        className={`shrink-0 p-2 bg-gray-900 text-gray-100 rounded-lg mx-4 mb-4 overflow-hidden transition-all duration-300 ease-in-out ${
-          isCollapsed ? 'max-h-0 opacity-0 p-0' : 'max-h-32 opacity-100'
-        }`}
-      >
-        <h3 className="text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-1.5 flex items-center gap-2">
-          <Terminal className="w-3 h-3" /> Recurring Jobs
-        </h3>
-        <div className="flex flex-wrap gap-1.5">
-          {jobs.filter(j => j.schedule.toLowerCase().includes('every') && j.status === 'active').slice(0, 5).map(job => (
-            <span
-              key={job.id}
-              onClick={() => setSelectedJob(job)}
-              className="text-[9px] bg-gray-800 border border-gray-700 px-1.5 py-0.5 rounded flex items-center gap-1.5 cursor-pointer hover:bg-gray-700"
-            >
-              <span className="w-1 h-1 rounded-full bg-green-500 animate-pulse"></span>
-              {job.name}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      {/* Job Detail Modal */}
-      {selectedJob && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedJob(null)}>
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-5" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-start mb-3">
-              <h3 className="text-lg font-bold text-gray-900">{selectedJob.name}</h3>
-              <button onClick={() => setSelectedJob(null)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="space-y-3 text-sm">
-              <div className="flex items-center gap-2 p-2 bg-gray-50 rounded">
-                <Repeat className="w-4 h-4 text-purple-600" />
-                <div>
-                  <div className="text-xs text-gray-500">Schedule</div>
-                  <div className="font-mono font-medium">{selectedJob.schedule}</div>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-2 p-2 bg-gray-50 rounded">
-                <Clock className="w-4 h-4 text-blue-600" />
-                <div>
-                  <div className="text-xs text-gray-500">Next Run</div>
-                  <div className="font-medium">{selectedJob.nextRun ? format(parseISO(selectedJob.nextRun), 'PPpp') : 'N/A'}</div>
-                </div>
-              </div>
-              
-              {selectedJob.lastRun && (
-                <div className="flex items-center gap-2 p-2 bg-gray-50 rounded">
-                  <Terminal className="w-4 h-4 text-green-600" />
-                  <div>
-                    <div className="text-xs text-gray-500">Last Run</div>
-                    <div className="font-medium">{format(parseISO(selectedJob.lastRun), 'PPpp')}</div>
-                  </div>
-                </div>
-              )}
-              
-              <div className="p-2 bg-gray-50 rounded">
-                <div className="text-xs text-gray-500 mb-1">Command / Payload</div>
-                <div className="font-mono text-xs bg-white p-2 rounded border break-all">{selectedJob.command}</div>
-              </div>
-              
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">Status:</span>
-                <span className={clsx(
-                  "px-2 py-0.5 rounded text-xs font-medium",
-                  selectedJob.status === 'active' ? "bg-green-100 text-green-700" :
-                  selectedJob.status === 'disabled' ? "bg-gray-100 text-gray-600" :
-                  "bg-blue-100 text-blue-700"
+                <div className={clsx(
+                  "text-sm font-bold py-1.5 rounded",
+                  isToday(day) 
+                    ? "bg-blue-600 text-white" 
+                    : "text-gray-700 hover:bg-gray-100"
                 )}>
-                  {selectedJob.status}
-                </span>
+                  {format(day, 'd')}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 h-48">
+            {weekDays.map((day) => {
+              const daySlots = getSlotsForDay(day);
+              const today = isToday(day);
+              
+              return (
+                <div
+                  key={day.toString()}
+                  className={clsx(
+                    "flex flex-col gap-1 rounded-md p-1.5 border min-h-0 overflow-hidden transition-colors",
+                    today 
+                      ? "bg-blue-50/50 border-blue-200" 
+                      : "bg-gray-50/50 border-gray-200 hover:bg-gray-100"
+                  )}
+                >
+                  <div className="flex flex-col gap-1 overflow-y-auto custom-scrollbar flex-1">
+                    {daySlots.map((slot, idx) => (
+                      <div
+                        key={`${slot.job.id}-${idx}`}
+                        onClick={() => setSelectedJob(slot.job)}
+                        className={clsx(
+                          "p-1.5 rounded border shadow-sm flex flex-col gap-0.5 cursor-pointer transition-all hover:scale-105 hover:z-10",
+                          "bg-blue-100 border-blue-200 text-blue-900"
+                        )}
+                      >
+                        <span className="font-semibold text-[10px] truncate leading-tight">
+                          {getJobDisplayName(slot.job)}
+                        </span>
+                        <span className="flex items-center gap-0.5 opacity-75 text-[9px]">
+                          <Clock className="w-2 h-2" />
+                          {slot.time}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Recurring Jobs Legend */}
+        {jobs.filter(j => j.schedule.toLowerCase().includes('every') && j.status === 'active' && j.schedule !== '* * * * *').length > 0 && (
+          <div className="pt-3 border-t border-gray-200">
+            <h4 className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1.5">
+              <Repeat className="w-3.5 h-3.5" />
+              Recurring Jobs
+            </h4>
+            <div className="flex flex-wrap gap-1.5">
+              {jobs
+                .filter(j => j.schedule.toLowerCase().includes('every') && j.status === 'active' && j.schedule !== '* * * * *')
+                .slice(0, 5)
+                .map(job => (
+                  <Badge key={job.id} variant="info" size="sm">
+                    {job.name}
+                  </Badge>
+                ))}
+              {jobs.filter(j => j.schedule.toLowerCase().includes('every') && j.status === 'active' && j.schedule !== '* * * * *').length > 5 && (
+                <Badge variant="default" size="sm">+more</Badge>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Selected Job Modal */}
+        {selectedJob && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+              <div className="flex items-center justify-between p-4 border-b">
+                <h3 className="text-base font-semibold text-gray-900">{selectedJob.name}</h3>
+                <Button variant="ghost" size="sm" onClick={() => setSelectedJob(null)}>
+                  <ChevronDown className="w-4 h-4 rotate-90" />
+                </Button>
+              </div>
+              <div className="p-4 space-y-3">
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Schedule</p>
+                  <p className="text-sm font-medium text-gray-900">{selectedJob.schedule}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Status</p>
+                  <Badge variant={selectedJob.status === 'active' ? 'success' : 'default'} size="sm" dot>
+                    {selectedJob.status}
+                  </Badge>
+                </div>
+                {selectedJob.nextRun && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Next Run</p>
+                    <p className="text-sm font-medium text-gray-900">
+                      {format(parseISO(selectedJob.nextRun), 'PPP p')}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
 import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
+import fs from 'fs/promises';
+import path from 'path';
 import { GatewayStatus, GatewayAction } from '@/lib/types';
+import { CLAUDE_LOGS_DIR } from '@/lib/constants';
+import { requireAuth } from '@/lib/auth';
+import { rateLimitDestructive } from '@/lib/rate-limit';
+import { logAudit } from '@/lib/audit';
 
 const execFileAsync = promisify(execFile);
 
@@ -43,6 +49,12 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const rlError = rateLimitDestructive(request);
+  if (rlError) return rlError;
+
+  const authError = requireAuth(request);
+  if (authError) return authError;
+
   try {
     const body = await request.json();
     const { action } = body as { action?: GatewayAction | 'restart' };
@@ -53,6 +65,9 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
+    const clientIp = request.headers.get('x-forwarded-for') || 'unknown';
+    await logAudit({ action: `gateway.${action}`, actor: 'api', ip: clientIp });
 
     const result = await executeGatewayAction(action);
     return NextResponse.json(result);
@@ -241,17 +256,24 @@ async function getSystemctlStatus() {
 
 async function getClaudeLogs() {
   try {
-    // Get last 100 lines from Claude Code logs (use shell for glob expansion)
-    const result = await execFileAsync('sh', ['-c', 'tail -n 100 /home/deploy-agent/.claude/logs/*.log 2>/dev/null || echo "No Claude logs found"']);
+    const files = await fs.readdir(CLAUDE_LOGS_DIR);
+    const logFiles = files.filter(f => f.endsWith('.log')).sort().slice(-3);
+
+    let combined = '';
+    for (const file of logFiles) {
+      const content = await fs.readFile(path.join(CLAUDE_LOGS_DIR, file), 'utf-8');
+      const lines = content.split('\n');
+      combined += `=== ${file} ===\n` + lines.slice(-50).join('\n') + '\n';
+    }
+
     return NextResponse.json({
       success: true,
-      logs: result.stdout,
+      logs: combined || 'No Claude logs found',
     });
-  } catch (error) {
-    console.error('Claude logs error:', error);
-    return NextResponse.json(
-      { error: 'Failed to get Claude logs', details: String(error) },
-      { status: 500 }
-    );
+  } catch {
+    return NextResponse.json({
+      success: true,
+      logs: 'No Claude logs found (directory not accessible)',
+    });
   }
 }

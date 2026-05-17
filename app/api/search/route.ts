@@ -3,8 +3,9 @@ import { execFile } from 'child_process';
 import util from 'util';
 import path from 'path';
 
+import { MEMORY_DIR } from '@/lib/constants';
+
 const execFilePromise = util.promisify(execFile);
-const MEMORY_DIR = '/root/.openclaw/workspace/memory';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);

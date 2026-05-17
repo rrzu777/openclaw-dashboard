@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react';
 import { Search as SearchIcon, FileText, Loader2, X, ChevronDown } from 'lucide-react';
 import { useCollapsible } from '@/lib/hooks/useCollapsible';
-// Manual debounce is easier than installing a package for just one component.
+import { Card, CardContent } from '@/components/ui/Card';
+import { SectionHeader } from '@/components/ui/SectionHeader';
+import { clsx } from 'clsx';
 
 export default function Search() {
   const [query, setQuery] = useState('');
@@ -12,7 +14,6 @@ export default function Search() {
   const [debouncedQuery, setDebouncedQuery] = useState(query);
   const { isCollapsed, toggle } = useCollapsible({ sectionId: 'search', defaultCollapsed: false });
 
-  // Manual debounce effect
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedQuery(query);
@@ -45,78 +46,80 @@ export default function Search() {
   }, [debouncedQuery]);
 
   return (
-    <div className="flex flex-col space-y-4 w-full bg-white rounded-lg shadow-sm border">
+    <Card padding="none">
       {/* Header */}
-      <button 
-        onClick={toggle}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors rounded-t-lg"
-      >
-        <h2 className="text-xl font-bold flex items-center gap-2">
-          <SearchIcon className="w-5 h-5 text-gray-600" />
-          Global Search
-        </h2>
-        <ChevronDown 
-          className={`w-5 h-5 text-gray-500 transition-transform duration-300 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`} 
-        />
-      </button>
+      <SectionHeader
+        title="Global Search"
+        description="Search across all data"
+        icon={<SearchIcon className="w-5 h-5" />}
+        action={
+          <button onClick={(e) => { e.stopPropagation(); toggle(); }}>
+            <ChevronDown className={clsx("w-5 h-5 text-gray-500 transition-transform duration-300", isCollapsed ? "-rotate-90" : "rotate-0")} />
+          </button>
+        }
+        className="px-4 py-3"
+      />
       
       {/* Content */}
-      <div 
-        className={`px-4 pb-4 overflow-hidden transition-all duration-300 ease-in-out ${
-          isCollapsed ? 'max-h-0 opacity-0' : 'max-h-96 opacity-100'
-        }`}
-      >
-      <div className="relative">
-        <input
-          type="text"
-          placeholder="Search memories (min 3 chars)..."
-          className="w-full p-2 pl-9 rounded border bg-gray-50 focus:bg-white focus:ring-2 ring-blue-500 outline-none text-sm transition-all"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <SearchIcon className="w-4 h-4 text-gray-400 absolute left-3 top-3 pointer-events-none" />
-        {loading && (
-          <Loader2 className="w-4 h-4 text-blue-500 absolute right-3 top-3 animate-spin" />
-        )}
-        {query && !loading && (
-          <button 
-            onClick={() => { setQuery(''); setResults([]); }}
-            className="absolute right-2 top-2 p-1 hover:bg-gray-200 rounded-full"
-          >
-            <X className="w-3 h-3 text-gray-500" />
-          </button>
-        )}
-      </div>
-
-      {/* Results Area */}
-      {results.length > 0 && (
-        <div className="space-y-2 mt-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
-          {results.map((result) => (
-            <div 
-              key={result.id} 
-              className="flex items-start gap-3 p-2 rounded hover:bg-gray-50 text-sm border-b last:border-0 border-gray-100 transition-colors cursor-default"
+      <CardContent className={clsx(
+        "px-4 pb-4 transition-all duration-300",
+        isCollapsed ? "max-h-0 opacity-0 p-0 overflow-hidden" : "max-h-none opacity-100"
+      )}>
+        {/* Search Input */}
+        <div className="relative mb-4">
+          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search sessions, events, logs..."
+            className="w-full pl-10 pr-10 py-2.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+          {query && (
+            <button
+              onClick={() => setQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
             >
-              <FileText className="w-4 h-4 text-gray-400 mt-0.5 shrink-0" />
-              <div className="min-w-0 flex-1">
-                <div className="flex justify-between items-center mb-0.5">
-                  <span className="font-semibold text-gray-700 truncate">{result.fileName}</span>
-                  <span className="text-xs text-gray-400 font-mono">L{result.lineNum}</span>
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {/* Results */}
+        <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
+          {loading ? (
+            <div className="flex items-center justify-center py-8 text-gray-400">
+              <Loader2 className="w-5 h-5 animate-spin mr-2" />
+              <span className="text-sm">Searching...</span>
+            </div>
+          ) : results.length > 0 ? (
+            results.map((result, idx) => (
+              <div
+                key={idx}
+                className="flex items-start gap-3 p-3 bg-gray-50 border border-gray-200 rounded-md hover:bg-gray-100 transition-colors cursor-pointer"
+              >
+                <FileText className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">{result.title || result.name || result.fileName || 'Untitled'}</p>
+                  <p className="text-xs text-gray-500 mt-1 truncate">{result.description || result.content || result.type || ''}</p>
                 </div>
-                <p className="text-gray-600 text-xs truncate font-mono bg-yellow-50/50 px-1 rounded">
-                  {result.content}
-                </p>
+              </div>
+            ))
+          ) : debouncedQuery.length >= 3 ? (
+            <div className="flex items-center justify-center py-8 text-gray-400">
+              <div className="text-center">
+                <SearchIcon className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No results found</p>
+                <p className="text-xs mt-1">Try adjusting your search</p>
               </div>
             </div>
-          ))}
+          ) : (
+            <div className="flex items-center justify-center py-8 text-gray-400">
+              <p className="text-sm">Enter at least 3 characters to search</p>
+            </div>
+          )}
         </div>
-      )}
-      
-      {debouncedQuery.length >= 3 && !loading && results.length === 0 && (
-        <div className="text-center text-gray-400 text-xs py-4 italic">
-          No matches found in memory.
-        </div>
-      )}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }

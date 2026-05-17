@@ -1,8 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { MCEvent } from '@/lib/events';
-
-const SESSIONS_DIR = '/root/.openclaw/agents/main/sessions';
+import { SESSIONS_DIR } from '@/lib/constants';
 
 function toLevel(t: string): 'info' | 'warn' | 'error' {
   if (t.includes('error') || t === 'tool_error') return 'error';

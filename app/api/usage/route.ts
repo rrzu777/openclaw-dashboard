@@ -4,42 +4,66 @@ import util from 'util';
 
 const execFilePromise = util.promisify(execFile);
 
-const USAGE_TRACKER = '/root/.openclaw/workspace/usage_tracker.py';
-
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    // Use execFile with argument array to prevent shell injection
-    const { stdout } = await execFilePromise('python3', [USAGE_TRACKER]);
+    // Run usage tracker with timeout
+    const { stdout } = await execFilePromise('timeout', [
+      '8', 'python3', '/root/.openclaw/workspace/usage_tracker.py'
+    ], { timeout: 10000 });
 
-    const stats = {
-      claude: { daily: 0, weekly: 0, status: 'OK' },
-      opencode: { cost: 0, total_tokens: 0 },
-      raw_log: stdout,
-    };
+    // Parse output for useful info
+    const gatewayMatch = stdout.match(/Gateway:.*RUNNING/);
+    const processes = stdout.match(/PID \d+: CPU [\d.]+% MEM [\d.]+%/g) || [];
+    
+    // Extract AI process count
+    const aiProcesses = processes.filter(p => !p.includes('python3') && !p.includes('timeout')).length;
 
-    // Parse Claude Usage
-    const dailyMatch = stdout.match(/Daily Usage: (\d+)%/);
-    if (dailyMatch) stats.claude.daily = parseInt(dailyMatch[1]);
-
-    const weeklyMatch = stdout.match(/Weekly Usage: (\d+)%/);
-    if (weeklyMatch) stats.claude.weekly = parseInt(weeklyMatch[1]);
-
-    if (stdout.includes('RATE LIMITED')) stats.claude.status = 'LIMITED';
-
-    // Parse OpenCode Stats
-    const costMatch = stdout.match(/Total Cost.*\$([0-9.]+)/);
-    if (costMatch) stats.opencode.cost = parseFloat(costMatch[1]);
-
-    return NextResponse.json(stats);
-  } catch (error) {
-    console.error('Usage API Error:', error);
-    // Return mock data on failure so UI doesn't break
     return NextResponse.json({
-      claude: { daily: 45, weekly: 30, status: 'OK' },
-      opencode: { cost: 1.25, total_tokens: 50000 },
-      mock: true,
+      gateway: {
+        running: gatewayMatch !== null,
+        status: gatewayMatch ? 'ONLINE' : 'OFFLINE'
+      },
+      aiProcesses: {
+        count: aiProcesses,
+        details: processes.slice(0, 5) // First 5 processes
+      },
+      opencode: {
+        status: stdout.includes('OpenCode dir') ? 'INSTALLED' : 'NOT_FOUND',
+        note: stdout.includes('Command failed') ? 'Stats command hangs - known issue' : 'OK'
+      },
+      raw_output: stdout.split('\n').slice(0, 20).join('\n'), // First 20 lines
     });
+  } catch (error: any) {
+    console.error('Usage API Error:', error.message);
+    
+    // Fallback: at least check if gateway is running
+    try {
+      let gatewayRunning = false;
+      try {
+        await execFilePromise('pgrep', ['-f', 'openclaw-gateway']);
+        gatewayRunning = true;
+      } catch {
+        gatewayRunning = false;
+      }
+      
+      return NextResponse.json({
+        gateway: {
+          running: gatewayRunning,
+          status: gatewayRunning ? 'ONLINE (degraded)' : 'OFFLINE'
+        },
+        aiProcesses: { count: 0, details: [] },
+        opencode: { status: 'UNKNOWN', note: 'Usage tracker failed: ' + error.message },
+        error: true,
+      });
+    } catch {
+      return NextResponse.json({
+        gateway: { running: false, status: 'UNKNOWN' },
+        aiProcesses: { count: 0, details: [] },
+        opencode: { status: 'ERROR', note: 'Cannot determine status' },
+        error: true,
+      });
+    }
   }
 }

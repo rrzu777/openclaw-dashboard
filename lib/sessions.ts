@@ -1,8 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { ActivityEvent } from './types';
-
-const SESSIONS_DIR = '/root/.openclaw/agents/main/sessions';
+import { SESSIONS_DIR } from './constants';
 
 export async function getRecentActivity(limit = 50): Promise<ActivityEvent[]> {
   try {

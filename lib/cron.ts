@@ -1,9 +1,7 @@
 import fs from 'fs/promises';
 import { CronExpressionParser } from 'cron-parser';
 import { CronJob } from './types';
-
-const JOBS_FILE = '/root/.openclaw/cron/jobs.json';
-const SYSTEM_CRON_FILE = '/var/spool/cron/crontabs/root';
+import { JOBS_FILE, SYSTEM_CRON_FILE } from './constants';
 
 export async function getCronJobs(): Promise<CronJob[]> {
   const jobs: CronJob[] = [];

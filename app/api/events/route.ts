@@ -6,7 +6,8 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const limit = Math.max(1, Math.min(1000, Number(searchParams.get('limit') ?? 200)));
-  const events = await readEvents(limit);
+  const includeHeartbeats = searchParams.get('heartbeats') === 'true';
+  const events = await readEvents(limit, includeHeartbeats);
   return NextResponse.json({ events });
 }
 

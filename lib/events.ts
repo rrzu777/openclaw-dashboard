@@ -1,33 +1,10 @@
 import fs from 'fs/promises';
 import path from 'path';
+import type { MCEvent, EventLevel, EventType } from './types';
 
-export type EventLevel = 'info' | 'warn' | 'error';
-export type EventType =
-  | 'task.started'
-  | 'task.checkpoint'
-  | 'task.waiting_for_input'
-  | 'task.completed'
-  | 'task.failed'
-  | 'tool.started'
-  | 'tool.finished'
-  | 'watchdog.heartbeat'
-  | 'watchdog.stalled'
-  | 'service.status'
-  | 'quota.snapshot';
+export type { MCEvent, EventLevel, EventType };
 
-export interface MCEvent {
-  id: string; // ulid-ish
-  ts: string; // ISO
-  level: EventLevel;
-  type: EventType;
-  message: string;
-  taskId?: string;
-  runId?: string;
-  actor?: string; // director|worker|watchdog
-  data?: any;
-}
-
-const EVENTS_FILE = '/root/.openclaw/workspace/repos/openclaw-dashboard/data/events.jsonl';
+import { EVENTS_FILE } from './constants';
 
 export async function appendEvent(e: Omit<MCEvent, 'id' | 'ts'> & { id?: string; ts?: string }) {
   const event: MCEvent = {
@@ -47,17 +24,31 @@ export async function appendEvent(e: Omit<MCEvent, 'id' | 'ts'> & { id?: string;
   return event;
 }
 
-export async function readEvents(limit = 200): Promise<MCEvent[]> {
+export async function readEvents(limit = 200, includeHeartbeats = false): Promise<MCEvent[]> {
   try {
     const content = await fs.readFile(EVENTS_FILE, 'utf-8');
     const lines = content.trim().split('\n').filter(Boolean);
-    const tail = lines.slice(-limit);
-    return tail
+
+    // Parse all lines, filter heartbeats, THEN take tail
+    let events = lines
       .map((l) => {
         try { return JSON.parse(l) as MCEvent; } catch { return null; }
       })
-      .filter(Boolean)
-      .sort((a, b) => new Date(b!.ts).getTime() - new Date(a!.ts).getTime()) as MCEvent[];
+      .filter((e): e is MCEvent => e !== null);
+
+    if (!includeHeartbeats) {
+      events = events.filter(e => e.type !== 'watchdog.heartbeat');
+    }
+
+    return events
+      .slice(-limit)
+      .sort((a, b) => {
+        const ta = new Date(b.ts).getTime();
+        const tb = new Date(a.ts).getTime();
+        if (isNaN(ta)) return 1;
+        if (isNaN(tb)) return -1;
+        return ta - tb;
+      });
   } catch {
     return [];
   }

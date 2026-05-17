@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { execFile } from 'child_process';
 import util from 'util';
 import { requireAuth } from '@/lib/auth';
+import { rateLimitDestructive } from '@/lib/rate-limit';
+import { logAudit } from '@/lib/audit';
 
 const execFilePromise = util.promisify(execFile);
 
@@ -35,6 +37,9 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const rlError = rateLimitDestructive(req);
+  if (rlError) return rlError;
+
   const authError = requireAuth(req);
   if (authError) return authError;
 
@@ -47,6 +52,7 @@ export async function POST(req: Request) {
     if (targets === 'ALL') {
       await execFilePromise('pkill', ['-f', 'opencode']).catch(() => {});
       await execFilePromise('pkill', ['-f', 'claw']).catch(() => {});
+      await logAudit({ action: 'panic.kill_all', actor: 'api', ip: req.headers.get('x-forwarded-for') || 'unknown' });
       return NextResponse.json({ status: 'killed_all', message: 'Nuclear option executed.' });
     }
 
@@ -60,6 +66,7 @@ export async function POST(req: Request) {
       }
 
       await execFilePromise('kill', ['-9', ...validPids]);
+      await logAudit({ action: 'panic.kill_selective', actor: 'api', target: validPids.join(','), ip: req.headers.get('x-forwarded-for') || 'unknown' });
       return NextResponse.json({
         status: 'killed_selective',
         message: `Killed PIDs: ${validPids.join(', ')}`,

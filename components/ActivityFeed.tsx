@@ -1,69 +1,163 @@
 "use client";
 
-import { useState } from 'react';
-import { twMerge } from 'tailwind-merge';
+import { useState, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { 
-  Terminal, Activity, AlertTriangle, CheckCircle, Clock, 
-  AlertCircle, Cpu, Hammer, Search, ChevronDown
+import {
+  Terminal, Activity, AlertTriangle, CheckCircle, Clock,
+  AlertCircle, Cpu, Hammer, Search, ChevronDown, MessageSquare,
+  ListFilter, Rows3, Download
 } from 'lucide-react';
 import { useEvents } from '@/contexts/EventsContext';
 import { useCollapsible } from '@/lib/hooks/useCollapsible';
+import { Card, CardContent } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
+import { SectionHeader } from '@/components/ui/SectionHeader';
+import { clsx } from 'clsx';
+import type { MCEvent, EventType } from '@/lib/types';
 
-type EventLevel = 'info' | 'warn' | 'error';
-type EventType =
-  | 'task.started'
-  | 'task.checkpoint'
-  | 'task.waiting_for_input'
-  | 'task.completed'
-  | 'task.failed'
-  | 'tool.started'
-  | 'tool.finished'
-  | 'watchdog.heartbeat'
-  | 'watchdog.stalled'
-  | 'service.status'
-  | 'quota.snapshot';
+const TYPE_CONFIG: Record<EventType, { icon: any; color: string; bg: string; label: string }> = {
+  'task.started': { icon: Activity, color: 'text-blue-600', bg: 'bg-blue-50', label: 'Task Started' },
+  'task.checkpoint': { icon: Clock, color: 'text-indigo-600', bg: 'bg-indigo-50', label: 'Checkpoint' },
+  'task.waiting_for_input': { icon: AlertCircle, color: 'text-amber-600', bg: 'bg-amber-50', label: 'Waiting' },
+  'task.completed': { icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50', label: 'Completed' },
+  'task.failed': { icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50', label: 'Failed' },
+  'tool.started': { icon: Hammer, color: 'text-blue-600', bg: 'bg-blue-50', label: 'Tool Started' },
+  'tool.finished': { icon: Hammer, color: 'text-sky-600', bg: 'bg-sky-50', label: 'Tool Finished' },
+  'watchdog.heartbeat': { icon: Cpu, color: 'text-emerald-600', bg: 'bg-emerald-50', label: 'Heartbeat' },
+  'watchdog.stalled': { icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-50', label: 'Stalled' },
+  'service.status': { icon: Terminal, color: 'text-slate-600', bg: 'bg-slate-50', label: 'Service' },
+  'quota.snapshot': { icon: Search, color: 'text-violet-600', bg: 'bg-violet-50', label: 'Quota' },
+};
 
-interface MCEvent {
-  id: string;
-  ts: string;
-  level: EventLevel;
-  type: EventType;
-  message: string;
-  taskId?: string;
-  actor?: string;
-  data?: any;
+interface EventItemProps {
+  event: MCEvent & { count?: number };
+  compact: boolean;
 }
 
-const TYPE_CONFIG: Record<EventType, { icon: any; color: string; bg: string; border: string }> = {
-  'task.started': { icon: Activity, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200' },
-  'task.checkpoint': { icon: Clock, color: 'text-indigo-600', bg: 'bg-indigo-50', border: 'border-indigo-200' },
-  'task.waiting_for_input': { icon: AlertCircle, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-200' },
-  'task.completed': { icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-200' },
-  'task.failed': { icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200' },
-  'tool.started': { icon: Hammer, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200' },
-  'tool.finished': { icon: Hammer, color: 'text-sky-600', bg: 'bg-sky-50', border: 'border-sky-200' },
-  'watchdog.heartbeat': { icon: Cpu, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200' },
-  'watchdog.stalled': { icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-200' },
-  'service.status': { icon: Terminal, color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200' },
-  'quota.snapshot': { icon: Search, color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-violet-200' },
-};
+function EventItem({ event, compact }: EventItemProps) {
+  const config = TYPE_CONFIG[event.type as EventType] || TYPE_CONFIG['service.status'];
+  const Icon = config.icon;
+  const timeAgo = formatDistanceToNow(new Date(event.ts), { addSuffix: true });
+
+  if (compact) {
+    return (
+      <div className="flex items-start gap-3 py-2.5 px-3 rounded-md hover:bg-gray-50 transition-colors group">
+        <div className={clsx("p-1.5 rounded-md shrink-0", config.bg)}>
+          <Icon className={clsx("w-4 h-4", config.color)} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className="text-sm font-medium text-gray-900 truncate">{event.message}</span>
+            {event.count && event.count > 1 && (
+              <Badge variant="default" size="sm">×{event.count}</Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            <span>{config.label}</span>
+            <span>•</span>
+            <span>{timeAgo}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border border-gray-200 rounded-lg p-3 hover:border-gray-300 transition-colors group">
+      <div className="flex items-start gap-3">
+        <div className={clsx("p-2 rounded-lg shrink-0", config.bg)}>
+          <Icon className={clsx("w-5 h-5", config.color)} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <span className="text-sm font-semibold text-gray-900">{config.label}</span>
+            <span className="text-xs text-gray-500">{timeAgo}</span>
+          </div>
+          <p className="text-sm text-gray-700 mb-2">{event.message}</p>
+          {event.data && Object.keys(event.data).length > 0 && (
+            <details className="text-xs">
+              <summary className="text-gray-500 cursor-pointer hover:text-gray-700">Show details</summary>
+              <pre className="mt-2 p-2 bg-gray-50 rounded text-gray-600 overflow-auto">
+                {JSON.stringify(event.data, null, 2)}
+              </pre>
+            </details>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function ActivityFeed() {
   const { events: rawEvents, loading } = useEvents();
   const events = rawEvents as unknown as MCEvent[];
-  const [filter, setFilter] = useState<'all' | 'errors' | 'tasks'>('all');
+  const [feedActivities, setFeedActivities] = useState<MCEvent[]>([]);
+
+  useEffect(() => {
+    const fetchFeed = async () => {
+      try {
+        const res = await fetch('/api/feed');
+        if (!res.ok) return;
+        const data = await res.json();
+        // Convert ActivityEvent format to MCEvent-like format for display
+        const converted: MCEvent[] = (data.activities || []).map((a: any) => ({
+          id: a.id,
+          ts: a.timestamp,
+          level: a.type === 'error' ? 'error' as const : 'info' as const,
+          type: a.type === 'tool' ? 'tool.started' as const
+              : a.type === 'error' ? 'task.failed' as const
+              : a.type === 'thinking' ? 'task.checkpoint' as const
+              : 'service.status' as const,
+          message: a.summary,
+          data: a.details ? { details: a.details } : undefined,
+          actor: 'session',
+        }));
+        setFeedActivities(converted);
+      } catch {
+        // silently fail
+      }
+    };
+    fetchFeed();
+    const interval = setInterval(fetchFeed, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Merge MCEvents from EventsContext with feed activities, deduplicate by id
+  const allEvents = (() => {
+    const seen = new Set<string>();
+    const merged: MCEvent[] = [];
+    for (const e of [...events, ...feedActivities]) {
+      if (seen.has(e.id)) continue;
+      seen.add(e.id);
+      merged.push(e);
+    }
+    return merged.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
+  })();
+
+  type FilterType = 'all' | 'tools' | 'messages' | 'errors' | 'system';
+  const [filter, setFilter] = useState<FilterType>('all');
   const [mode, setMode] = useState<'verbose' | 'compact'>('compact');
   const { isCollapsed, toggle } = useCollapsible({ sectionId: 'activityFeed', defaultCollapsed: false });
 
+  // Stats for filter badges
+  const toolCount = allEvents.filter(e => e.type === 'tool.started' || e.type === 'tool.finished').length;
+  const msgCount = allEvents.filter(e => e.type === 'task.checkpoint' || (e.type === 'service.status' && e.actor === 'session')).length;
+  const errorCount = allEvents.filter(e => e.level === 'error' || e.type === 'task.failed' || e.type === 'watchdog.stalled').length;
+  const sysCount = allEvents.filter(e => e.type === 'service.status' && e.actor !== 'session').length;
+
   // Filter events
-  const filteredRaw = events.filter(e => {
-    if (filter === 'errors') return e.level === 'error' || e.type.includes('failed') || e.type.includes('stalled');
-    if (filter === 'tasks') return e.type.startsWith('task.');
-    return true;
+  const filteredRaw = allEvents.filter(e => {
+    switch (filter) {
+      case 'tools': return e.type === 'tool.started' || e.type === 'tool.finished';
+      case 'messages': return e.type === 'task.checkpoint' || (e.type === 'service.status' && e.actor === 'session');
+      case 'errors': return e.level === 'error' || e.type === 'task.failed' || e.type === 'watchdog.stalled';
+      case 'system': return (e.type === 'service.status' && e.actor !== 'session') || e.type === 'watchdog.heartbeat' || e.type === 'quota.snapshot';
+      default: return true;
+    }
   });
 
-  // Compact mode: group consecutive identical (type+message) bursts
+  // Compact mode: group consecutive identical events
   const filtered = (() => {
     if (mode === 'verbose') return filteredRaw;
     const out: (MCEvent & { count?: number })[] = [];
@@ -80,174 +174,110 @@ export default function ActivityFeed() {
     return out;
   })();
 
-  // Stats
-  const errorCount = events.filter(e => e.level === 'error' || e.type === 'task.failed' || e.type === 'watchdog.stalled').length;
-  const taskCount = events.filter(e => e.type.startsWith('task.')).length;
-  const stalledCount = events.filter(e => e.type === 'watchdog.stalled').length;
-
   return (
-    <div className="flex flex-col h-full w-full">
-      {/* Header with Stats */}
-      <button 
-        onClick={toggle}
-        className="flex justify-between items-center px-4 py-3 border-b hover:bg-gray-50 transition-colors shrink-0"
-      >
-        <div className="flex items-center gap-2">
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <Terminal className="w-5 h-5 text-purple-500" />
-            Activity Feed
-          </h2>
-          <div className="flex gap-2 text-xs">
-            <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-100 font-medium">
-              {taskCount} Tasks
-            </span>
-            {errorCount > 0 && (
-              <span className="bg-red-50 text-red-700 px-2 py-1 rounded border border-red-100 font-medium">
-                {errorCount} Errors
-              </span>
-            )}
-            {stalledCount > 0 && (
-              <span className="bg-orange-50 text-orange-700 px-2 py-1 rounded border border-orange-100 font-medium">
-                {stalledCount} Stalled
-              </span>
-            )}
+    <Card padding="none" className="h-full flex flex-col">
+      {/* Header */}
+      <SectionHeader
+        title="Activity Feed"
+        description="Real-time event stream"
+        icon={<Terminal className="w-5 h-5" />}
+        action={
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => { e.stopPropagation(); window.open('/api/export?format=csv&limit=1000', '_blank'); }}
+              title="Export events as CSV"
+            >
+              <Download className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => { e.stopPropagation(); toggle(); }}
+              icon={<ChevronDown className={clsx("w-4 h-4 transition-transform", isCollapsed && "-rotate-90")} />}
+            >
+              {isCollapsed ? 'Expand' : 'Collapse'}
+            </Button>
           </div>
-        </div>
-        <ChevronDown 
-          className={`w-5 h-5 text-gray-500 transition-transform duration-300 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`} 
-        />
-      </button>
-
-      {/* Filter + Mode */}
-      <div 
-        className={`flex items-center justify-between gap-2 px-4 py-3 border-b shrink-0 overflow-hidden transition-all duration-300 ease-in-out ${
-          isCollapsed ? 'max-h-0 opacity-0 p-0 border-0' : 'max-h-24 opacity-100'
-        }`}
-      >
-        <div className="flex gap-1" role="group" aria-label="Filter events">
-          {(['all', 'tasks', 'errors'] as const).map(f => (
-            <button
-              key={f}
-              onClick={(e) => { e.stopPropagation(); setFilter(f); }}
-              className={twMerge(
-                "px-3 py-1 rounded text-xs font-medium transition-colors cursor-pointer",
-                filter === f
-                  ? "bg-purple-100 text-purple-700 border border-purple-200"
-                  : "bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100"
-              )}
-              aria-pressed={filter === f}
+        }
+        className="px-4 py-3"
+      />
+      
+      {/* Filter Controls */}
+      <div className={clsx(
+        "flex items-center justify-between gap-2 px-4 py-2 border-b border-gray-200 transition-all duration-300",
+        isCollapsed ? "h-0 opacity-0 p-0 overflow-hidden" : "h-auto opacity-100"
+      )}>
+        <div className="flex items-center gap-1 flex-wrap">
+          {([
+            { key: 'all' as FilterType, label: 'All', count: allEvents.length, icon: null },
+            { key: 'tools' as FilterType, label: 'Tools', count: toolCount, icon: <Hammer className="w-3 h-3" /> },
+            { key: 'messages' as FilterType, label: 'Messages', count: msgCount, icon: <MessageSquare className="w-3 h-3" /> },
+            { key: 'errors' as FilterType, label: 'Errors', count: errorCount, icon: <AlertTriangle className="w-3 h-3" /> },
+            { key: 'system' as FilterType, label: 'System', count: sysCount, icon: <Cpu className="w-3 h-3" /> },
+          ]).map(f => (
+            <Button
+              key={f.key}
+              variant={filter === f.key ? 'primary' : 'ghost'}
+              size="sm"
+              onClick={(e) => { e.stopPropagation(); setFilter(f.key); }}
+              icon={f.icon}
             >
-              {f.charAt(0).toUpperCase() + f.slice(1)}
-            </button>
+              {f.label}
+              {f.count > 0 && <span className="ml-1 text-xs opacity-70">({f.count})</span>}
+            </Button>
           ))}
         </div>
 
-        <div className="flex gap-1" role="group" aria-label="View mode">
-          {(['compact', 'verbose'] as const).map(m => (
-            <button
-              key={m}
-              onClick={(e) => { e.stopPropagation(); setMode(m); }}
-              className={twMerge(
-                "px-3 py-1 rounded text-xs font-medium transition-colors cursor-pointer",
-                mode === m
-                  ? "bg-gray-900 text-white border border-gray-900"
-                  : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50"
-              )}
-              title={m === 'compact' ? 'Group repeated events' : 'Show all events'}
-            >
-              {m}
-            </button>
-          ))}
+        <div className="flex items-center gap-1 shrink-0">
+          <Button
+            variant={mode === 'compact' ? 'secondary' : 'ghost'}
+            size="sm"
+            onClick={(e) => { e.stopPropagation(); setMode('compact'); }}
+            title="Compact view"
+          >
+            <ListFilter className="w-3.5 h-3.5" />
+          </Button>
+          <Button
+            variant={mode === 'verbose' ? 'secondary' : 'ghost'}
+            size="sm"
+            onClick={(e) => { e.stopPropagation(); setMode('verbose'); }}
+            title="Verbose view"
+          >
+            <Rows3 className="w-3.5 h-3.5" />
+          </Button>
         </div>
       </div>
       
-      {/* Scrollable List */}
-      <div 
-        className={`flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-2 min-h-0 transition-all duration-300 ease-in-out ${
-          isCollapsed ? 'max-h-0 opacity-0 p-0' : 'max-h-[600px] opacity-100 p-4'
-        }`}
-      >
-        {loading && events.length === 0 && (
-          <div className="flex justify-center items-center h-full text-gray-400 animate-pulse">
-            Loading events...
+      {/* Event List */}
+      <CardContent className={clsx(
+        "flex-1 overflow-y-auto p-2 transition-all duration-300",
+        isCollapsed ? "h-0 opacity-0 p-0 overflow-hidden" : "h-auto opacity-100"
+      )}>
+        {loading && allEvents.length === 0 ? (
+          <div className="flex items-center justify-center h-32 text-gray-400">
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin" />
+              <span className="text-sm">Loading events...</span>
+            </div>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex items-center justify-center h-32 text-gray-400">
+            <div className="text-center">
+              <Search className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No events found</p>
+              <p className="text-xs mt-1">Try adjusting your filters</p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-1">
+            {filtered.map((event: any, idx: number) => (
+              <EventItem key={event.id || idx} event={event} compact={mode === 'compact'} />
+            ))}
           </div>
         )}
-
-        {filtered.map((event: any) => {
-          const typeKey = (event.type as EventType) in TYPE_CONFIG ? (event.type as EventType) : 'service.status';
-          const config = TYPE_CONFIG[typeKey];
-          const Icon = config.icon;
-
-          const toolName = event.data?.tool;
-          const hasDetails = !!event.data && Object.keys(event.data).length > 0;
-
-          return (
-            <details
-              key={event.id}
-              className={twMerge(
-                "group rounded-lg border text-sm transition-all",
-                config.bg,
-                config.border
-              )}
-            >
-              <summary className="list-none cursor-pointer select-none">
-                <div className={twMerge("flex gap-3 p-3")}>
-                    <div className="mt-0.5 shrink-0">
-                      <Icon className={twMerge("w-4 h-4", config.color)} />
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-start mb-1">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className={twMerge("font-medium truncate", config.color)}>
-                            {event.type}
-                          </span>
-                          {toolName && (
-                            <span className="text-xs text-gray-700 bg-white/60 border border-black/10 px-2 py-0.5 rounded shrink-0 font-mono">
-                              {toolName}
-                            </span>
-                          )}
-                          {event.taskId && (
-                            <span className="text-xs text-gray-500 font-mono shrink-0">#{event.taskId}</span>
-                          )}
-                          {mode === 'compact' && event.count && event.count > 1 && (
-                            <span className="text-[10px] bg-black/10 px-1.5 py-0.5 rounded shrink-0">×{event.count}</span>
-                          )}
-                        </div>
-                        <span className="text-xs opacity-60 shrink-0 flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {formatDistanceToNow(new Date(event.ts), { addSuffix: true })}
-                        </span>
-                      </div>
-
-                      <div className="text-gray-800 text-sm">{event.message}</div>
-
-                      {event.actor && (
-                        <div className="mt-1 text-xs text-gray-500">
-                          Actor: <span className="font-mono">{event.actor}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-              </summary>
-
-              {hasDetails && (
-                <div className="px-3 pb-3">
-                  <div className="bg-white/70 border border-black/5 rounded p-2 text-xs font-mono whitespace-pre-wrap overflow-auto max-h-64">
-                    {JSON.stringify(event.data, null, 2)}
-                  </div>
-                </div>
-              )}
-            </details>
-          );
-        })}
-
-        {filtered.length === 0 && !loading && (
-          <div className="flex justify-center items-center h-full text-gray-400">
-            No events matching filter
-          </div>
-        )}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }

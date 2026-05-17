@@ -1,4 +1,3 @@
-// API Routes configuration
 export const API_ROUTES = {
   cron: '/api/cron',
   usage: '/api/usage',
@@ -6,10 +5,14 @@ export const API_ROUTES = {
   events: '/api/events',
   feed: '/api/feed',
   search: '/api/search',
+  gateway: '/api/gateway',
+  systemHealth: '/api/system-health',
+  audit: '/api/audit',
+  alerts: '/api/alerts',
+  retry: '/api/retry',
 } as const;
 
-// App configuration
 export const APP_CONFIG = {
   name: 'OpenClaw Dashboard',
-  version: '1.0.0',
+  version: '2.0.0',
 } as const;
